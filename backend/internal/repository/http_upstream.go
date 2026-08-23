@@ -495,9 +495,11 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
-	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	// TLS identity must never be shared across accounts, even when the generic
+	// pool uses proxy-only isolation. Include the complete profile so template
+	// edits rebuild both the connection pool and its session cache.
+	cacheKey := fmt.Sprintf("tls-account:%d|proxy:%s", accountID, proxyKey)
+	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls=" + tlsProfileIdentity(profile)
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -1402,6 +1404,26 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 	}
 
 	return transport, nil
+}
+
+func tlsProfileIdentity(profile *tlsfingerprint.Profile) string {
+	if profile == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf(
+		"name:%s|grease:%t|ciphers:%v|curves:%v|points:%v|sig:%v|alpn:%v|versions:%v|keys:%v|psk:%v|ext:%v",
+		profile.Name,
+		profile.EnableGREASE,
+		profile.CipherSuites,
+		profile.Curves,
+		profile.PointFormats,
+		profile.SignatureAlgorithms,
+		profile.ALPNProtocols,
+		profile.SupportedVersions,
+		profile.KeyShareGroups,
+		profile.PSKModes,
+		profile.Extensions,
+	)
 }
 
 // trackedBody 带跟踪功能的响应体包装器

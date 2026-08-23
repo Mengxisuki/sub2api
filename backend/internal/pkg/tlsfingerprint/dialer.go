@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
@@ -36,6 +37,7 @@ type Profile struct {
 type Dialer struct {
 	profile    *Profile
 	baseDialer func(ctx context.Context, network, addr string) (net.Conn, error)
+	sessions   ClientSessionCache
 }
 
 // HTTPProxyDialer creates TLS connections through HTTP/HTTPS proxies with custom fingerprints.
@@ -43,6 +45,7 @@ type Dialer struct {
 type HTTPProxyDialer struct {
 	profile  *Profile
 	proxyURL *url.URL
+	sessions ClientSessionCache
 }
 
 // SOCKS5ProxyDialer creates TLS connections through SOCKS5 proxies with custom fingerprints.
@@ -50,12 +53,48 @@ type HTTPProxyDialer struct {
 type SOCKS5ProxyDialer struct {
 	profile  *Profile
 	proxyURL *url.URL
+	sessions ClientSessionCache
 }
 
-// Default TLS fingerprint values captured from Claude Code (Node.js 24.x)
-// Captured via tls-fingerprint-web capture server
-// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
-// JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
+// ClientSessionCache enables TLS session resumption across connections created
+// by one dialer. A cache must never be shared between account identities.
+type ClientSessionCache interface {
+	Get(sessionKey string) (*utls.ClientSessionState, bool)
+	Put(sessionKey string, session *utls.ClientSessionState)
+}
+
+type synchronizedSessionCache struct {
+	mu       sync.Mutex
+	sessions map[string]*utls.ClientSessionState
+}
+
+func NewSynchronizedSessionCache() ClientSessionCache {
+	return &synchronizedSessionCache{sessions: make(map[string]*utls.ClientSessionState)}
+}
+
+func (c *synchronizedSessionCache) Get(sessionKey string) (*utls.ClientSessionState, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	session, ok := c.sessions[sessionKey]
+	return session, ok
+}
+
+func (c *synchronizedSessionCache) Put(sessionKey string, session *utls.ClientSessionState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if session == nil {
+		delete(c.sessions, sessionKey)
+		return
+	}
+	c.sessions[sessionKey] = session
+}
+
+// Default TLS fingerprint values captured from real Claude Code (Bun 1.4.0
+// native runtime, macOS arm64) via a local tls-fingerprint capture server.
+// JA3 Hash: d871d02cecbde59abbf8f4806134addf
+// Extension order: 0,23,65281,10,11,35,16,5,13,18,51,45,43,21 (padding last,
+// no ECH GREASE). The legacy Node.js 24.x preset is kept selectable but its
+// "ECH GREASE present, padding absent" combo is a distinguishing signal.
 var (
 	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
 	// Order is critical for JA3 fingerprint matching
@@ -116,6 +155,53 @@ var (
 	}
 )
 
+// claudeCodeBunExtensionOrder is the extension order captured from real
+// Claude Code 2.1.220 (Bun 1.4.0). Compared to the Node.js 24.x default it
+// drops ECH GREASE (65037) and appends TLS 1.3 padding (21) as the last
+// extension, matching the actual ClientHello observed on macOS arm64.
+var claudeCodeBunExtensionOrder = []uint16{
+	0,     // server_name
+	23,    // extended_master_secret
+	65281, // renegotiation_info
+	10,    // supported_groups
+	11,    // ec_point_formats
+	35,    // session_ticket
+	16,    // alpn
+	5,     // status_request
+	13,    // signature_algorithms
+	18,    // signed_certificate_timestamp
+	51,    // key_share
+	45,    // psk_key_exchange_modes
+	43,    // supported_versions
+	21,    // padding (TLS 1.3 ClientHello padding)
+}
+
+// ClaudeCodeBunProfile returns the built-in "Claude Code (Bun)" simulation
+// mode. It reproduces the ClientHello captured from real Claude Code 2.1.220
+// (Bun 1.4.0 native package):
+//
+//	JA3:      d871d02cecbde59abbf8f4806134addf
+//	JA4:      t13d1714h1_... (17 ciphers, 14 extensions, ALPN http/1.1)
+//	Extensions: 0,23,65281,10,11,35,16,5,13,18,51,45,43,21
+//
+// Padding (21) is present and rounds the ClientHello to a 512-byte record
+// (BoringSSL style, same as Bun); ECH GREASE (65037) is absent.
+func ClaudeCodeBunProfile() *Profile {
+	return &Profile{
+		Name:          "Claude Code (Bun)",
+		ALPNProtocols: []string{"http/1.1"},
+		Extensions:    append([]uint16(nil), claudeCodeBunExtensionOrder...),
+	}
+}
+
+// NodeJS24Profile returns the legacy built-in preset that simulated a
+// Node.js 24.x client. It is kept selectable for compatibility, but its
+// fixed "ECH GREASE present, no padding" extension vector is a stable
+// distinguishing signal and should not be used when mimicking Claude Code.
+func NodeJS24Profile() *Profile {
+	return &Profile{Name: "Built-in Default (Node.js 24.x)"}
+}
+
 // NewDialer creates a new TLS fingerprint dialer.
 // baseDialer is used for TCP connection establishment (supports proxy scenarios).
 // If baseDialer is nil, direct TCP dial is used.
@@ -123,19 +209,19 @@ func NewDialer(profile *Profile, baseDialer func(ctx context.Context, network, a
 	if baseDialer == nil {
 		baseDialer = (&net.Dialer{}).DialContext
 	}
-	return &Dialer{profile: profile, baseDialer: baseDialer}
+	return &Dialer{profile: profile, baseDialer: baseDialer, sessions: NewSynchronizedSessionCache()}
 }
 
 // NewHTTPProxyDialer creates a new TLS fingerprint dialer that works through HTTP/HTTPS proxies.
 // It establishes a CONNECT tunnel before performing TLS handshake with custom fingerprint.
 func NewHTTPProxyDialer(profile *Profile, proxyURL *url.URL) *HTTPProxyDialer {
-	return &HTTPProxyDialer{profile: profile, proxyURL: proxyURL}
+	return &HTTPProxyDialer{profile: profile, proxyURL: proxyURL, sessions: NewSynchronizedSessionCache()}
 }
 
 // NewSOCKS5ProxyDialer creates a new TLS fingerprint dialer that works through SOCKS5 proxies.
 // It establishes a SOCKS5 tunnel before performing TLS handshake with custom fingerprint.
 func NewSOCKS5ProxyDialer(profile *Profile, proxyURL *url.URL) *SOCKS5ProxyDialer {
-	return &SOCKS5ProxyDialer{profile: profile, proxyURL: proxyURL}
+	return &SOCKS5ProxyDialer{profile: profile, proxyURL: proxyURL, sessions: NewSynchronizedSessionCache()}
 }
 
 // DialTLSContext establishes a TLS connection through SOCKS5 proxy with the configured fingerprint.
@@ -176,7 +262,7 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 	slog.Debug("tls_fingerprint_socks5_tunnel_established")
 
 	// Step 3: Perform TLS handshake on the tunnel with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	return performTLSHandshake(ctx, conn, d.profile, addr, d.sessions)
 }
 
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
@@ -247,7 +333,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
 	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	return performTLSHandshake(ctx, conn, d.profile, addr, d.sessions)
 }
 
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
@@ -263,13 +349,13 @@ func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.
 	slog.Debug("tls_fingerprint_tcp_connected", "addr", addr)
 
 	// Perform TLS handshake with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	return performTLSHandshake(ctx, conn, d.profile, addr, d.sessions)
 }
 
 // performTLSHandshake performs the uTLS handshake on an established connection.
 // It builds a ClientHello spec from the profile, applies it, and completes the handshake.
 // On failure, conn is closed and an error is returned.
-func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, addr string) (net.Conn, error) {
+func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, addr string, sessions ClientSessionCache) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
@@ -277,6 +363,9 @@ func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, a
 
 	spec := buildClientHelloSpecFromProfile(profile)
 	tlsConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloCustom)
+	if sessions != nil {
+		tlsConn.SetSessionCache(sessions)
+	}
 
 	if err := tlsConn.ApplyPreset(spec); err != nil {
 		_ = conn.Close()
@@ -434,6 +523,10 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 			extensions = append(extensions, &utls.GREASEEncryptedClientHelloExtension{})
 		case 0xff01: // renegotiation_info
 			extensions = append(extensions, &utls.RenegotiationInfoExtension{})
+		case 21: // padding (TLS 1.3 ClientHello padding)
+			// Real Node/Bun clients pad the ClientHello with a BoringSSL-style
+			// extension so the record payload rounds up to 512 bytes.
+			extensions = append(extensions, &utls.UtlsPaddingExtension{GetPaddingLen: utls.BoringPaddingStyle})
 		default:
 			// Unknown extension — send as GenericExtension (type ID + empty data).
 			// This covers encrypt_then_mac(22) and any future extensions.

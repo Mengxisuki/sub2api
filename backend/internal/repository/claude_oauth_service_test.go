@@ -27,6 +27,7 @@ type requestCapture struct {
 	body        []byte
 	bodyJSON    map[string]any
 	contentType string
+	userAgent   string
 }
 
 func newTestReqClient(rt http.RoundTripper) *req.Client {
@@ -218,6 +219,7 @@ func (s *ClaudeOAuthServiceSuite) TestExchangeCodeForToken() {
 			validate: func(captured requestCapture) {
 				require.Equal(s.T(), http.MethodPost, captured.method, "expected POST")
 				require.True(s.T(), strings.HasPrefix(captured.contentType, "application/json"), "unexpected content-type")
+				require.Equal(s.T(), "axios/1.15.2", captured.userAgent, "unexpected user-agent")
 				require.Equal(s.T(), "AUTH", captured.bodyJSON["code"])
 				require.Equal(s.T(), "STATE2", captured.bodyJSON["state"])
 				require.Equal(s.T(), oauth.ClientID, captured.bodyJSON["client_id"])
@@ -265,6 +267,7 @@ func (s *ClaudeOAuthServiceSuite) TestExchangeCodeForToken() {
 			rt := newInProcessTransport(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				captured.method = r.Method
 				captured.contentType = r.Header.Get("Content-Type")
+				captured.userAgent = r.Header.Get("User-Agent")
 				captured.body, _ = io.ReadAll(r.Body)
 				_ = json.Unmarshal(captured.body, &captured.bodyJSON)
 				tt.handler(w, r)
@@ -275,6 +278,7 @@ func (s *ClaudeOAuthServiceSuite) TestExchangeCodeForToken() {
 			s.client = client
 			s.client.tokenURL = "http://in-process/token"
 			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil }
+			s.client.refreshClientFactory = s.client.clientFactory
 
 			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "", tt.isSetupToken)
 
@@ -322,10 +326,12 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 				// 验证使用 JSON 格式（不是 form 格式）
 				require.True(s.T(), strings.HasPrefix(captured.contentType, "application/json"),
 					"expected JSON content-type, got: %s", captured.contentType)
+				require.Equal(s.T(), "axios/1.15.2", captured.userAgent, "unexpected user-agent")
 				// 验证 JSON body 内容
 				require.Equal(s.T(), "refresh_token", captured.bodyJSON["grant_type"])
 				require.Equal(s.T(), "rt", captured.bodyJSON["refresh_token"])
 				require.Equal(s.T(), oauth.ClientID, captured.bodyJSON["client_id"])
+				require.Equal(s.T(), oauth.ScopeAPI, captured.bodyJSON["scope"])
 			},
 		},
 		{
@@ -361,6 +367,7 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 			rt := newInProcessTransport(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				captured.method = r.Method
 				captured.contentType = r.Header.Get("Content-Type")
+				captured.userAgent = r.Header.Get("User-Agent")
 				captured.body, _ = io.ReadAll(r.Body)
 				_ = json.Unmarshal(captured.body, &captured.bodyJSON)
 				tt.handler(w, r)
@@ -371,6 +378,7 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 			s.client = client
 			s.client.tokenURL = "http://in-process/token"
 			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil }
+			s.client.refreshClientFactory = s.client.clientFactory
 
 			resp, err := s.client.RefreshToken(context.Background(), "rt", "")
 

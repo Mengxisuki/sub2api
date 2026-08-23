@@ -296,6 +296,12 @@ func TestAllProfiles(t *testing.T) {
 
 	profiles := []TestProfileExpectation{
 		{
+			// Claude Code (Bun) 模拟模式 — 复刻真实 Claude Code 2.1.220 (Bun 1.4.0)
+			// 本机抓包 JA3: d871d02cecbde59abbf8f4806134addf
+			Profile:     ClaudeCodeBunProfile(),
+			ExpectedJA3: "d871d02cecbde59abbf8f4806134addf",
+		},
+		{
 			// Default profile (Node.js 24.x)
 			// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
 			// JA4: t13d1714h1_5b57614c22b0_7baf387fc6ff

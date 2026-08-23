@@ -53,6 +53,15 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 		profile *Profile
 	}{
 		{
+			name: "claude_code_bun",
+			profile: &Profile{
+				Name:          "claude_code_bun",
+				EnableGREASE:  false,
+				ALPNProtocols: []string{"http/1.1"},
+				Extensions:    []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43, 21},
+			},
+		},
+		{
 			name: "default_profile",
 			profile: &Profile{
 				Name:         "default",

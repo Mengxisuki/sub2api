@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 
@@ -20,16 +21,18 @@ import (
 
 func NewClaudeOAuthClient() service.ClaudeOAuthClient {
 	return &claudeOAuthService{
-		baseURL:       "https://claude.ai",
-		tokenURL:      oauth.TokenURL,
-		clientFactory: createReqClient,
+		baseURL:              "https://claude.ai",
+		tokenURL:             oauth.TokenURL,
+		clientFactory:        createReqClient,
+		refreshClientFactory: createClaudeCodeReqClient,
 	}
 }
 
 type claudeOAuthService struct {
-	baseURL       string
-	tokenURL      string
-	clientFactory func(proxyURL string) (*req.Client, error)
+	baseURL              string
+	tokenURL             string
+	clientFactory        func(proxyURL string) (*req.Client, error)
+	refreshClientFactory func(proxyURL string) (*req.Client, error)
 }
 
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
@@ -207,7 +210,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.13.6").
+		SetHeader("User-Agent", "axios/1.15.2").
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -228,7 +231,11 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 }
 
 func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	factory := s.refreshClientFactory
+	if factory == nil {
+		factory = createClaudeCodeReqClient
+	}
+	client, err := factory(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -237,6 +244,7 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		"grant_type":    "refresh_token",
 		"refresh_token": refreshToken,
 		"client_id":     oauth.ClientID,
+		"scope":         oauth.ScopeAPI,
 	}
 
 	var tokenResp oauth.TokenResponse
@@ -245,7 +253,7 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.13.6").
+		SetHeader("User-Agent", "axios/1.15.2").
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -277,4 +285,29 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 	}
 
 	return instrumentReqClient(client), nil
+}
+
+func createClaudeCodeReqClient(proxyURL string) (*req.Client, error) {
+	parsedProxy, err := parseOptionalProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	transport, err := buildUpstreamTransportWithTLSFingerprint(defaultPoolSettings(nil), parsedProxy, tlsfingerprint.ClaudeCodeBunProfile())
+	if err != nil {
+		return nil, err
+	}
+
+	client := req.C().
+		SetTimeout(60 * time.Second).
+		SetCookieJar(nil)
+	client.GetClient().Transport = transport
+	return instrumentReqClient(client), nil
+}
+
+func parseOptionalProxyURL(proxyURL string) (*url.URL, error) {
+	trimmed, _, err := proxyurl.Parse(proxyURL)
+	if err != nil || trimmed == "" {
+		return nil, err
+	}
+	return url.Parse(trimmed)
 }

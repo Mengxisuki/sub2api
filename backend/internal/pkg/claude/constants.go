@@ -1,6 +1,8 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
+import "strings"
+
 // Claude Code 客户端相关常量
 
 // Beta header 常量
@@ -66,11 +68,10 @@ const DefaultCacheControlTTL = "5m"
 // CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
-const CLICurrentVersion = "2.1.220"
+const CLICurrentVersion = "2.1.241"
 
-// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
-// 用于 OAuth 账号伪装成 Claude Code 时使用。
-// 顺序与真实 CLI 抓包一致。
+// FullClaudeCodeMimicryBetas returns the default beta set used by Claude Code
+// 2.1.241 for a first-party OAuth request on a non-Haiku model.
 //
 // 使用建议：
 //   - OAuth mimic：所有模型（包括 Haiku）都使用这整份列表。
@@ -89,6 +90,31 @@ func FullClaudeCodeMimicryBetas() []string {
 	}
 }
 
+// FullClaudeCodeMimicryBetasForModel matches the client's model-catalog driven
+// beta assembly. The two material differences for Claude Code 2.1.241 are:
+//   - every Haiku model omits claude-code-20250219;
+//   - Haiku 4.5 does not advertise interleaved-thinking.
+func FullClaudeCodeMimicryBetasForModel(modelID string) []string {
+	if !strings.Contains(strings.ToLower(modelID), "haiku") {
+		return FullClaudeCodeMimicryBetas()
+	}
+	if strings.Contains(strings.ToLower(modelID), "haiku-4-5") {
+		return []string{
+			BetaOAuth,
+			BetaPromptCachingScope,
+			BetaContextManagement,
+			BetaExtendedCacheTTL,
+		}
+	}
+	return []string{
+		BetaOAuth,
+		BetaInterleavedThinking,
+		BetaPromptCachingScope,
+		BetaContextManagement,
+		BetaExtendedCacheTTL,
+	}
+}
+
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
 var DefaultHeaders = map[string]string{
 	// Keep these in sync with recent Claude CLI traffic to reduce the chance
@@ -96,11 +122,11 @@ var DefaultHeaders = map[string]string{
 	// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
 	"User-Agent":                                "claude-cli/" + CLICurrentVersion + " (external, cli)",
 	"X-Stainless-Lang":                          "js",
-	"X-Stainless-Package-Version":               "0.94.0",
+	"X-Stainless-Package-Version":               "0.112.1",
 	"X-Stainless-OS":                            "Linux",
 	"X-Stainless-Arch":                          "arm64",
 	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v24.3.0",
+	"X-Stainless-Runtime-Version":               "v24.19.0",
 	"X-Stainless-Retry-Count":                   "0",
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",

@@ -1321,17 +1321,25 @@ type GatewayUsageRecordConfig struct {
 }
 
 // TLSFingerprintConfig TLS指纹伪装配置
-// 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
+// 用于模拟 Claude CLI 的 TLS 握手特征，避免被识别为非官方客户端
 type TLSFingerprintConfig struct {
 	// Enabled: 是否全局启用TLS指纹功能
 	Enabled bool `mapstructure:"enabled"`
+	// DefaultMode: 账号启用TLS指纹但未绑定自定义模板时的内置默认模拟模式
+	//   "claude_code_bun" (默认): 复刻真实 Claude Code (Bun 1.4.0) ClientHello，
+	//     带 padding、无 ECH GREASE，JA3 = d871d02cecbde59abbf8f4806134addf
+	//   "node_24": 旧版 Node.js 24.x 模拟（固定 ECH GREASE + 无 padding，容易被识别）
+	DefaultMode string `mapstructure:"default_mode"`
+	// SeedBuiltinProfiles: 启动时是否自动把内置模拟模板写入模板表
+	// （按名称幂等，便于前端直接选择 "Claude Code (Bun)" / "Node.js 24.x (legacy)"）
+	SeedBuiltinProfiles bool `mapstructure:"seed_builtin_profiles"`
 	// Profiles: 预定义的TLS指纹配置模板
 	// key 为模板名称，如 "claude_cli_v2", "chrome_120" 等
 	Profiles map[string]TLSProfileConfig `mapstructure:"profiles"`
 }
 
 // TLSProfileConfig 单个TLS指纹模板的配置
-// 所有列表字段为空时使用内置默认值（Claude CLI 2.x / Node.js 20.x）
+// 所有列表字段为空时使用内置默认值（Claude Code / Bun）
 // 建议通过 TLS 指纹采集工具 (tests/tls-fingerprint-web) 获取完整配置
 type TLSProfileConfig struct {
 	// Name: 模板显示名称
@@ -2427,6 +2435,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.user_message_queue.cleanup_interval_seconds", 60)
 
 	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
+	viper.SetDefault("gateway.tls_fingerprint.default_mode", "claude_code_bun")
+	viper.SetDefault("gateway.tls_fingerprint.seed_builtin_profiles", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
