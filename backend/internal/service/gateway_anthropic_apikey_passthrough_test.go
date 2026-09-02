@@ -909,7 +909,7 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			require.NotNil(t, upstream.lastReq)
 			require.Equal(t, "Bearer oauth-token", getHeaderRaw(upstream.lastReq.Header, "authorization"))
 			finalBeta := getHeaderRaw(upstream.lastReq.Header, "anthropic-beta")
-			for _, beta := range claude.FullClaudeCodeMimicryBetas() {
+			for _, beta := range claude.FullClaudeCodeMimicryBetasForModel(gjson.GetBytes(upstream.lastBody, "model").String()) {
 				require.Truef(t, anthropicBetaTokensContains(finalBeta, beta), "missing mimic beta %s", beta)
 			}
 			require.False(t, anthropicBetaTokensContains(finalBeta, "client-only-beta"))

@@ -147,15 +147,18 @@ func TestComputeFinalAnthropicBeta_OAuthMimic_NonHaiku_IncludesContextManagement
 	require.True(t, anthropicBetaTokensContains(final, claude.BetaClaudeCode))
 }
 
-func TestComputeFinalAnthropicBeta_OAuthMimic_Haiku_IncludesFullClaudeCodeBetas(t *testing.T) {
+func TestComputeFinalAnthropicBeta_OAuthMimic_Haiku_MatchesOfficialModelBetas(t *testing.T) {
 	s := newTestGatewayServiceForBeta(false)
 	final, ok := s.computeFinalAnthropicBeta("oauth", true, "claude-haiku-4-5", http.Header{}, []byte(`{}`), nil)
 	require.True(t, ok)
-	require.Equal(t, strings.Join(claude.FullClaudeCodeMimicryBetas(), ","), final)
-	for _, beta := range claude.FullClaudeCodeMimicryBetas() {
+	expected := strings.Join(claude.FullClaudeCodeMimicryBetasForModel("claude-haiku-4-5"), ",")
+	require.Equal(t, expected, final)
+	for _, beta := range claude.FullClaudeCodeMimicryBetasForModel("claude-haiku-4-5") {
 		require.Truef(t, anthropicBetaTokensContains(final, beta),
-			"OAuth mimic Haiku 必须包含完整 Claude Code beta 集合，缺少 %s", beta)
+			"OAuth mimic Haiku 必须包含官方模型 beta 集合，缺少 %s", beta)
 	}
+	require.False(t, anthropicBetaTokensContains(final, claude.BetaClaudeCode))
+	require.False(t, anthropicBetaTokensContains(final, claude.BetaInterleavedThinking))
 }
 
 func TestComputeFinalAnthropicBeta_OAuthMimic_IgnoresClientBeta(t *testing.T) {
@@ -477,7 +480,7 @@ func TestBuildUpstreamRequest_OAuthMimicHaiku_PreservesContextManagementEndToEnd
 		Status:      StatusActive,
 		Schedulable: true,
 	}
-	// Haiku + mimic CC 使用完整 beta，其中包含 context-management；body 必须对称保留。
+	// Haiku + mimic CC 对齐 2.1.241：不含 claude-code beta，但包含 context-management。
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
 	req, _, err := svc.buildUpstreamRequest(
@@ -493,8 +496,10 @@ func TestBuildUpstreamRequest_OAuthMimicHaiku_PreservesContextManagementEndToEnd
 		"OAuth mimic + Haiku 端到端：outgoing body 必须保留 context_management")
 	require.True(t, anthropicBetaTokensContains(outBeta, claude.BetaContextManagement),
 		"对称约束：outgoing anthropic-beta header 必须包含 context-management beta")
-	require.True(t, anthropicBetaTokensContains(outBeta, claude.BetaClaudeCode),
-		"Haiku mimic 必须携带 claude-code beta")
+	require.False(t, anthropicBetaTokensContains(outBeta, claude.BetaClaudeCode),
+		"Haiku mimic 必须复刻官方行为：不携带 claude-code beta")
+	require.False(t, anthropicBetaTokensContains(outBeta, claude.BetaInterleavedThinking),
+		"Haiku 4.5 官方默认不携带 interleaved-thinking beta")
 }
 
 func TestBuildUpstreamRequest_APIKeyHaiku_RemainsUnmimicked(t *testing.T) {
