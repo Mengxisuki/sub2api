@@ -897,6 +897,11 @@ export default {
           defaultProfile: 'Built-in Default',
           randomProfile: 'Random'
         },
+        clientProfile: {
+          label: 'Claude Code Version Snapshot',
+          hint: 'Select an immutable Claude Code snapshot; it binds UA, SDK headers, beta flags and gzip behavior',
+          default: 'Server Default'
+        },
         sessionIdMasking: {
           label: 'Session ID Masking',
           hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'

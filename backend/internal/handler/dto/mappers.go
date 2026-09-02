@@ -312,6 +312,9 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
 			out.TLSFingerprintProfileID = &profileID
 		}
+		if profileID := a.GetClaudeClientProfileID(); profileID != "" {
+			out.ClientProfileID = profileID
+		}
 		// 会话ID伪装开关
 		if a.IsSessionIDMaskingEnabled() {
 			enabled := true

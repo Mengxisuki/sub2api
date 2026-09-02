@@ -21,18 +21,26 @@ import (
 
 func NewClaudeOAuthClient() service.ClaudeOAuthClient {
 	return &claudeOAuthService{
-		baseURL:              "https://claude.ai",
-		tokenURL:             oauth.TokenURL,
-		clientFactory:        createReqClient,
-		refreshClientFactory: createClaudeCodeReqClient,
+		baseURL:               "https://claude.ai",
+		tokenURL:              oauth.TokenURL,
+		clientFactory:         createReqClient,
+		cliOAuthClientFactory: createClaudeCodeReqClient,
 	}
 }
 
 type claudeOAuthService struct {
-	baseURL              string
-	tokenURL             string
-	clientFactory        func(proxyURL string) (*req.Client, error)
-	refreshClientFactory func(proxyURL string) (*req.Client, error)
+	baseURL               string
+	tokenURL              string
+	clientFactory         func(proxyURL string) (*req.Client, error)
+	cliOAuthClientFactory func(proxyURL string) (*req.Client, error)
+}
+
+func (s *claudeOAuthService) cliClient(proxyURL string) (*req.Client, error) {
+	factory := s.cliOAuthClientFactory
+	if factory == nil {
+		factory = createClaudeCodeReqClient
+	}
+	return factory(proxyURL)
 }
 
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
@@ -175,7 +183,7 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 }
 
 func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.cliClient(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -231,11 +239,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 }
 
 func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
-	factory := s.refreshClientFactory
-	if factory == nil {
-		factory = createClaudeCodeReqClient
-	}
-	client, err := factory(proxyURL)
+	client, err := s.cliClient(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -2360,6 +2361,15 @@ func (a *Account) GetTLSFingerprintProfileID() int64 {
 		}
 	}
 	return 0
+}
+
+// GetClaudeClientProfileID returns the selected immutable Claude application
+// snapshot. Empty means use the server default.
+func (a *Account) GetClaudeClientProfileID() string {
+	if a == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.GetExtraString(claude.AccountExtraKey))
 }
 
 // GetUserMsgQueueMode 获取用户消息队列模式
