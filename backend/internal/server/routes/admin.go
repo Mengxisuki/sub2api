@@ -96,6 +96,7 @@ func RegisterAdminRoutes(
 
 		// TLS 指纹模板管理
 		registerTLSFingerprintProfileRoutes(admin, h)
+		admin.GET("/claude-client-profiles", h.Admin.ClientProfile.List)
 
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)

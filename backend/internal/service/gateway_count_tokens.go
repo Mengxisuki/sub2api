@@ -483,12 +483,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if ctFingerprint != nil && ctEnableFP {
 		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
 	}
+	clientProfile := accountClientProfile(account)
 
 	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
 	// 顺序约束同 buildUpstreamRequest。
 	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalCountTokensAnthropicBeta(
-		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
+		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet, clientProfile,
 	)
 
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
@@ -539,12 +540,12 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 	if tokenType == "oauth" {
-		applyClaudeOAuthHeaderDefaults(req)
+		applyClaudeOAuthHeaderDefaults(req, clientProfile)
 	}
 
 	// OAuth + mimic Claude Code：强制注入 CLI 指纹 header
 	if tokenType == "oauth" && mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, false)
+		applyClaudeCodeMimicHeaders(req, false, clientProfile)
 	}
 
 	// 写入最终 anthropic-beta header（Del 一次避免白名单透传值残留）

@@ -889,6 +889,11 @@ export default {
           defaultProfile: '内置默认',
           randomProfile: '随机'
         },
+        clientProfile: {
+          label: 'Claude Code 版本快照',
+          hint: '选择不可拆分的 Claude Code 快照，将同步绑定 UA、SDK 头、beta 集与 gzip 行为',
+          default: '服务端默认'
+        },
         sessionIdMasking: {
           label: '会话 ID 伪装',
           hint: '启用后将在 15 分钟内固定 metadata.user_id 中的 session ID，使上游认为请求来自同一会话'

@@ -20,7 +20,7 @@ const (
 )
 
 // builtinProfileSeeds 启动时按名称幂等种入的内置模拟模板，
-// 使前端账号下拉与模板管理页可以直接选择这两个模拟模式。
+// 账号启用 TLS 指纹后可从内置模板中选择（模板只读，不允许用户自定义）。
 var builtinProfileSeeds = []*model.TLSFingerprintProfile{
 	{
 		Name:          "Claude Code (Bun)",

@@ -2460,6 +2460,26 @@
           </div>
         </div>
 
+        <!-- Client Version Snapshot -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <label class="input-label mb-0" for="claude-client-profile">
+            {{ t('admin.accounts.quotaControl.clientProfile.label') }}
+          </label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.clientProfile.hint') }}
+          </p>
+          <select id="claude-client-profile" v-model="claudeClientProfileId" class="input mt-3">
+            <option value="">{{ t('admin.accounts.quotaControl.clientProfile.default') }}</option>
+            <option v-for="profile in claudeClientProfiles" :key="profile.id" :value="profile.id">
+              {{ profile.name }}
+            </option>
+          </select>
+          <p v-if="selectedClaudeClientProfile" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            SDK {{ selectedClaudeClientProfile.sdk_package_version }} ·
+            {{ selectedClaudeClientProfile.supports_request_gzip ? 'gzip' : 'identity' }}
+          </p>
+        </div>
+
         <!-- Session ID Masking -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2697,6 +2717,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { ClaudeClientProfile } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -2941,6 +2962,11 @@ const umqModeOptions = computed(() => [
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const claudeClientProfileId = ref('')
+const claudeClientProfiles = ref<ClaudeClientProfile[]>([])
+const selectedClaudeClientProfile = computed(
+  () => claudeClientProfiles.value.find(profile => profile.id === claudeClientProfileId.value) || null
+)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -3695,6 +3721,14 @@ async function loadTLSProfiles() {
   }
 }
 
+async function loadClaudeClientProfiles() {
+  try {
+    claudeClientProfiles.value = await adminAPI.claudeClientProfiles.list()
+  } catch {
+    claudeClientProfiles.value = []
+  }
+}
+
 watch(
   [() => props.show, () => props.account],
   ([show, newAccount], [wasShow, previousAccount]) => {
@@ -3703,7 +3737,7 @@ watch(
     }
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
-      loadTLSProfiles()
+      Promise.all([loadTLSProfiles(), loadClaudeClientProfiles()])
     }
   },
   { immediate: true }
@@ -4013,6 +4047,7 @@ function loadQuotaControlSettings(account: Account) {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
+  claudeClientProfileId.value = ''
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -4058,6 +4093,8 @@ function loadQuotaControlSettings(account: Account) {
     tlsFingerprintEnabled.value = true
   }
   tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
+
+  claudeClientProfileId.value = account.claude_client_profile_id ?? ''
 
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
@@ -4659,6 +4696,13 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.enable_tls_fingerprint
         delete newExtra.tls_fingerprint_profile_id
+      }
+
+      // Immutable Claude Code application snapshot
+      if (claudeClientProfileId.value) {
+        newExtra.claude_client_profile_id = claudeClientProfileId.value
+      } else {
+        delete newExtra.claude_client_profile_id
       }
 
       // Session ID masking setting
