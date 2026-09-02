@@ -38,4 +38,9 @@ describe('locale messages compile', () => {
     collectCompileErrors(messages, locale, errors)
     expect(errors).toEqual([])
   })
+
+  it('exposes TLS fingerprint profile messages under the admin namespace', () => {
+    expect(zh.admin.tlsFingerprintProfiles.title).toBe('TLS 指纹模板管理')
+    expect(en.admin.tlsFingerprintProfiles.title).toBe('TLS Fingerprint Profiles')
+  })
 })

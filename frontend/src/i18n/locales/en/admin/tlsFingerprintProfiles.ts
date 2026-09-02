@@ -1,0 +1,51 @@
+export default {
+  tlsFingerprintProfiles: {
+    title: 'TLS Fingerprint Profiles',
+    description: 'Manage profiles used to simulate client TLS fingerprints.',
+    createProfile: 'Create Profile',
+    editProfile: 'Edit Profile',
+    deleteProfile: 'Delete Profile',
+    noProfiles: 'No TLS fingerprint profiles',
+    createFirstProfile: 'Create your first profile to get started.',
+    loadFailed: 'Failed to load TLS fingerprint profiles',
+    createSuccess: 'TLS fingerprint profile created',
+    updateSuccess: 'TLS fingerprint profile updated',
+    deleteSuccess: 'TLS fingerprint profile deleted',
+    saveFailed: 'Failed to save TLS fingerprint profile',
+    deleteFailed: 'Failed to delete TLS fingerprint profile',
+    deleteConfirmMessage: 'Delete the profile “{name}”?',
+    columns: {
+      name: 'Name',
+      description: 'Description',
+      grease: 'GREASE',
+      alpn: 'ALPN',
+      actions: 'Actions'
+    },
+    form: {
+      pasteYaml: 'Paste YAML configuration (optional)',
+      pasteYamlPlaceholder: 'Paste YAML exported from tls-fingerprint-web',
+      parseYaml: 'Parse YAML',
+      pasteYamlHint: 'You can copy a configuration from the fingerprint collector.',
+      openCollector: 'Open collector',
+      name: 'Name',
+      namePlaceholder: 'e.g. Claude Code Bun',
+      description: 'Description',
+      descriptionPlaceholder: 'Describe this profile',
+      enableGrease: 'Enable GREASE',
+      enableGreaseHint: 'Send GREASE extensions in ClientHello.',
+      cipherSuites: 'Cipher suites',
+      cipherSuitesHint: 'Decimal or 0x hexadecimal values, separated by commas.',
+      curves: 'Curves',
+      curvesHint: 'Separate values with commas.',
+      signatureAlgorithms: 'Signature algorithms',
+      supportedVersions: 'Supported TLS versions',
+      keyShareGroups: 'Key share groups',
+      extensions: 'Extensions',
+      pointFormats: 'Point formats',
+      pskModes: 'PSK modes',
+      alpnProtocols: 'ALPN protocols',
+      yamlParsed: 'YAML parsed successfully',
+      yamlParseFailed: 'No valid profile name was found in the YAML'
+    }
+  }
+}
